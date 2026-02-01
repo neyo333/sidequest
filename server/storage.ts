@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { quests, dailyQuests, userSettings, achievements, userStats, users, ACHIEVEMENT_TYPES } from "@db/schema";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import type { Quest, DailyQuest, StatsResponse, UserSettings, Achievement } from "@db/schema";
 
 // Helper to get "today's date" relative to user's refresh time
@@ -52,12 +52,15 @@ export const storage = {
 
   async bulkDeleteQuests(questIds: number[], userId: string): Promise<number> {
     const result = await db.delete(quests).where(
-      and(sql`${quests.id} = ANY(${questIds})`, eq(quests.userId, userId))
+      and(
+        inArray(quests.id, questIds), 
+        eq(quests.userId, userId)
+      )
     ).returning();
     return result.length;
-  },
+  }, // Fixed comma/brace
 
-  async archiveQuest(questId: number, userId: string): Promise<Quest | null> {
+   async archiveQuest(questId: number, userId: string): Promise<Quest | null> {
     const [quest] = await db.update(quests)
       .set({ archived: true })
       .where(and(eq(quests.id, questId), eq(quests.userId, userId)))
@@ -68,7 +71,12 @@ export const storage = {
   async bulkArchiveQuests(questIds: number[], userId: string): Promise<number> {
     const result = await db.update(quests)
       .set({ archived: true })
-      .where(and(sql`${quests.id} = ANY(${questIds})`, eq(quests.userId, userId)))
+      .where(
+        and(
+          inArray(quests.id, questIds),
+          eq(quests.userId, userId)
+        )
+      )
       .returning();
     return result.length;
   },
@@ -251,52 +259,39 @@ export const storage = {
       }
     }
 
-    const totalDaysActive = Array.from(dateMap.values()).filter(d => d.completed >= 1).length;
-
     await db.update(userStats)
-      .set({
-        currentStreak: hasCompletedToday ? currentStreak : 0,
-        longestStreak,
+      .set({ 
+        currentStreak, 
+        longestStreak, 
         totalQuestsCompleted,
-        totalDaysActive,
-        lastActiveDate: sortedDates[0] ? new Date(sortedDates[0]) : null,
+        lastActiveDate: hasCompletedToday ? currentDate : null 
       })
       .where(eq(userStats.userId, userId));
   },
+
+    async checkAndUnlockAchievements(userId: string): Promise<void> {
+    const [stats] = await db.select().from(userStats).where(eq(userStats.userId, userId));
+    if (!stats) return;
+
+    const existing = await db.select().from(achievements).where(eq(achievements.userId, userId));
+    const existingTypes = new Set(existing.map(a => a.achievementType));
+
+    if (stats.totalQuestsCompleted >= 1 && !existingTypes.has('FIRST_QUEST')) {
+      // Force the insert using raw SQL keys to bypass Drizzle's mapping
+      await db.execute(sql`
+        INSERT INTO "achievements" ("user_id", "achievement_type", "unlocked_at")
+        VALUES (${userId}, 'FIRST_QUEST', NOW())
+      `);
+    }
+  },
+
 
   isConsecutiveDay(date1: string, date2: string): boolean {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
     const diff = Math.abs(d1.getTime() - d2.getTime());
-    return diff <= (1000 * 60 * 60 * 24);
+    return diff <= 86400000;
   },
-
-      async checkAndUnlockAchievements(userId: string): Promise<void> {
-    const [stats] = await db.select().from(userStats).where(eq(userStats.userId, userId));
-    if (!stats) return;
-
-    // Check for "First Quest" achievement
-    if (stats.totalQuestsCompleted >= 1) {
-      const [existing] = await db.select()
-        .from(achievements)
-        .where(
-          and(
-            eq(achievements.userId, userId),
-            eq(achievements.type, 'FIRST_QUEST')
-          )
-        );
-      
-      if (!existing) {
-        await db.insert(achievements).values({
-          userId,
-          type: 'FIRST_QUEST',
-          unlockedAt: new Date(),
-        });
-      }
-    }
-  },
-
-
 
   async getSettings(userId: string): Promise<UserSettings | null> {
     const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
