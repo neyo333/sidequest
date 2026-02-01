@@ -5,7 +5,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
-import { registerRoutes } from "./routes/index.js"; 
+import { registerRoutes } from "./routes/index"; 
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -88,3 +88,4 @@ process.on("SIGTERM", () => {
     process.exit(0);
   });
 });
+export default app;
