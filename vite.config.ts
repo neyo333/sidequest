@@ -15,9 +15,14 @@ export default defineConfig({
     outDir: 'dist/public',
     emptyOutDir: true,
   },
-  server: {
+    server: {
+    hmr: true, // Force Hot Module Replacement
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
     },
   },
+
 });

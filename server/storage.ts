@@ -271,22 +271,32 @@ export const storage = {
     return diff <= (1000 * 60 * 60 * 24);
   },
 
-  async checkAndUnlockAchievements(userId: string): Promise<void> {
+      async checkAndUnlockAchievements(userId: string): Promise<void> {
     const [stats] = await db.select().from(userStats).where(eq(userStats.userId, userId));
     if (!stats) return;
 
+    // Check for "First Quest" achievement
     if (stats.totalQuestsCompleted >= 1) {
-      const [existing] = await db.select().from(achievements)
-        .where(and(eq(achievements.userId, userId), eq(achievements.type, 'FIRST_QUEST')));
+      const [existing] = await db.select()
+        .from(achievements)
+        .where(
+          and(
+            eq(achievements.userId, userId),
+            eq(achievements.type, 'FIRST_QUEST')
+          )
+        );
+      
       if (!existing) {
         await db.insert(achievements).values({
           userId,
           type: 'FIRST_QUEST',
-          unlockedAt: new Date()
+          unlockedAt: new Date(),
         });
       }
     }
   },
+
+
 
   async getSettings(userId: string): Promise<UserSettings | null> {
     const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
