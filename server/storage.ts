@@ -68,6 +68,15 @@ export const storage = {
     return quest || null;
   },
 
+    async updateQuest(questId: number, userId: string, content: string): Promise<Quest | null> {
+    const [updated] = await db.update(quests)
+      .set({ content })
+      .where(and(eq(quests.id, questId), eq(quests.userId, userId)))
+      .returning();
+    return updated || null;
+  },
+
+
   async bulkArchiveQuests(questIds: number[], userId: string): Promise<number> {
     const result = await db.update(quests)
       .set({ archived: true })

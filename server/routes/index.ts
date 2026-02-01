@@ -4,6 +4,10 @@ import { z } from "zod";
 import { storage } from "../storage.js"
 import { requireAuth } from "../auth";
 import { registerAuthRoutes } from "./auth";
+import { db } from "../db";
+import { quests } from "@db/schema";
+import { eq, and } from "drizzle-orm";
+
 
 async function getGameDate(userId: string): Promise<string> {
   const settings = await storage.getSettings(userId);
@@ -158,7 +162,7 @@ export function registerRoutes(app: Express) {
       const id = Number(req.params.id);
       const { completed } = req.body;
 
-      const updated = await storage.updateDailyQuestCompletion(id, userId, completed);
+      const updated = await storage.updateQuest(parseInt(req.params.id), req.user!.id, req.body.content);
       
       if (!updated) {
         return res.status(404).json({ message: "Daily quest not found" });
