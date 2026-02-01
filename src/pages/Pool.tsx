@@ -42,6 +42,9 @@ export default function Pool() {
 
   const enabledDefaultQuests = settings?.enabledDefaultQuests || DEFAULT_QUESTS.map(q => q.id);
   const categories = ["all", ...Array.from(new Set(DEFAULT_QUESTS.map(q => q.category)))];
+  
+  // Calculate total active quests (custom + enabled defaults)
+  const totalActiveQuests = (quests?.length || 0) + enabledDefaultQuests.length;
 
   const handleSelectAll = () => {
     if (selectedIds.length === filteredQuests.length) {
@@ -70,11 +73,9 @@ export default function Pool() {
     const allVisible = visibleQuestIds.every(id => enabledDefaultQuests.includes(id));
     
     if (allVisible) {
-      // Unselect all visible
       const newEnabled = enabledDefaultQuests.filter(id => !visibleQuestIds.includes(id));
       updateSettings({ enabledDefaultQuests: newEnabled });
     } else {
-      // Select all visible
       const newEnabled = [...new Set([...enabledDefaultQuests, ...visibleQuestIds])];
       updateSettings({ enabledDefaultQuests: newEnabled });
     }
@@ -130,7 +131,7 @@ export default function Pool() {
         <div>
           <h1 className="text-5xl font-display font-bold italic tracking-tighter">Quest Pool</h1>
           <p className="text-muted-foreground mt-2 text-lg font-light">
-            Your collection of daily challenges
+            {totalActiveQuests} active quests in your pool
           </p>
         </div>
         <CreateQuestDialog />

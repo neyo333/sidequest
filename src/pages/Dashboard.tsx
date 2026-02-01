@@ -7,40 +7,66 @@ import { Link } from "wouter";
 import { ArrowRight, Flame, Trophy, Clock } from "lucide-react";
 import ReactConfetti from "react-confetti";
 import { useWindowSize, useInterval } from "react-use";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { achievementEmitter } from "@/App";
 import { useSettings } from "@/hooks/use-settings";
-import { useQueryClient } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 function CountdownTimer({ refreshTime = "04:00", onReset }: { refreshTime?: string, onReset?: () => void }) {
   const [timeLeft, setTimeLeft] = useState("");
+  const hasResetRef = useRef(false);
+  const lastCheckRef = useRef<Date>(new Date());
 
-  const updateTimer = () => {
+  const calculateTimeLeft = () => {
     const now = new Date();
     const target = new Date();
     const [hours, minutes] = refreshTime.split(':').map(Number);
+    
     target.setHours(hours, minutes, 0, 0);
     
+    // If target time has passed today, set it for tomorrow
     if (now >= target) {
       target.setDate(target.getDate() + 1);
     }
     
     const diff = target.getTime() - now.getTime();
     
-    // IF THE TIMER HITS ZERO (or less), trigger the reset!
-    if (diff <= 0 && onReset) {
-      onReset();
+    // Check if we've crossed the reset boundary
+    const lastCheck = lastCheckRef.current;
+    const resetTime = new Date();
+    resetTime.setHours(hours, minutes, 0, 0);
+    
+    // If we've crossed the reset time and haven't reset yet
+    if (lastCheck < resetTime && now >= resetTime && !hasResetRef.current) {
+      hasResetRef.current = true;
+      if (onReset) {
+        console.log("Timer hit zero! Triggering reset...");
+        onReset();
+      }
+      // Reset the flag after 1 minute to allow next day's reset
+      setTimeout(() => {
+        hasResetRef.current = false;
+      }, 60000);
     }
-
+    
+    lastCheckRef.current = now;
+    
     const h = Math.floor(diff / (1000 * 60 * 60));
     const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((diff % (1000 * 60)) / 1000);
-    setTimeLeft(`${h}h ${m}m ${s}s`);
+    
+    return `${h}h ${m}m ${s}s`;
   };
 
-  useInterval(updateTimer, 1000);
+  useEffect(() => {
+    setTimeLeft(calculateTimeLeft());
+  }, [refreshTime]);
+
+  useInterval(() => {
+    setTimeLeft(calculateTimeLeft());
+  }, 1000);
 
   return (
     <div className="flex items-center gap-2 text-muted-foreground bg-secondary/50 px-3 py-1.5 rounded-full text-sm font-medium">
@@ -50,22 +76,30 @@ function CountdownTimer({ refreshTime = "04:00", onReset }: { refreshTime?: stri
   );
 }
 
-
 export default function Dashboard() {
   const queryClient = useQueryClient(); 
   const { toast } = useToast();
   const { data: dailyQuests, isLoading: isQuestsLoading } = useDailyQuests();
   const { data: stats } = useStats();
-  const { data: settings } = useSettings(); 
-  const handleReset = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/daily"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+  const { data: settings } = useSettings();
+  
+  const handleReset = async () => {
+    console.log("Resetting daily quests...");
+    
+    // Force refresh daily quests and stats
+    await queryClient.invalidateQueries({ queryKey: ["/api/daily"] });
+    await queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    
+    // Refetch immediately
+    await queryClient.refetchQueries({ queryKey: ["/api/daily"] });
+    await queryClient.refetchQueries({ queryKey: ["/api/stats"] });
     
     toast({
       title: "New Day!",
       description: "Your quests have been refreshed.",
     });
   };
+  
   const { width, height } = useWindowSize();
   const [showConfetti, setShowConfetti] = useState(false); 
 
@@ -82,7 +116,7 @@ export default function Dashboard() {
 
   if (isQuestsLoading) {
     return (
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="space-y-6 max-w-3xl mx-auto px-4">
         <div className="h-32 bg-muted/20 rounded-2xl animate-pulse" />
         <div className="space-y-4">
           {[1, 2, 3].map(i => (
@@ -142,7 +176,7 @@ export default function Dashboard() {
             </div>
           )}
           <CountdownTimer 
-            refreshTime={settings?.refreshTime}
+            refreshTime={settings?.refreshTime || "04:00"}
             onReset={handleReset} 
           />
         </div>
