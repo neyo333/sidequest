@@ -4,10 +4,6 @@ import { z } from "zod";
 import { storage } from "../storage.js"
 import { requireAuth } from "../auth";
 import { registerAuthRoutes } from "./auth";
-import { db } from "../db";
-import { quests } from "@db/schema";
-import { eq, and } from "drizzle-orm";
-
 
 async function getGameDate(userId: string): Promise<string> {
   const settings = await storage.getSettings(userId);
@@ -162,7 +158,7 @@ export function registerRoutes(app: Express) {
       const id = Number(req.params.id);
       const { completed } = req.body;
 
-      const updated = await storage.updateQuest(parseInt(req.params.id), req.user!.id, req.body.content);
+      const updated = await storage.updateDailyQuestCompletion(id, userId, completed);
       
       if (!updated) {
         return res.status(404).json({ message: "Daily quest not found" });
@@ -223,28 +219,6 @@ export function registerRoutes(app: Express) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  app.patch("/api/quests/:id", requireAuth, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const id = Number(req.params.id);
-    const { content } = req.body;
-    
-    const [updated] = await db.update(quests)
-      .set({ content })
-      .where(and(eq(quests.id, id), eq(quests.userId, userId)))
-      .returning();
-    
-    if (!updated) {
-      return res.status(404).json({ message: "Quest not found" });
-    }
-    
-    res.json(updated);
-  } catch (error) {
-    console.error("Update quest error:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-});
 
   // === Data Export ===
   app.get("/api/export", requireAuth, async (req, res) => {

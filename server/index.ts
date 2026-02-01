@@ -5,7 +5,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
-import { registerRoutes } from "./routes/index"; 
+import { registerRoutes } from "./routes/index.js"; 
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -45,7 +45,7 @@ registerRoutes(app);
 
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(process.cwd(), "dist");
+  const distPath = path.join(__dirname, "../dist/public");
   app.use(express.static(distPath));
 
   // SPA fallback
@@ -88,4 +88,3 @@ process.on("SIGTERM", () => {
     process.exit(0);
   });
 });
-export default app;

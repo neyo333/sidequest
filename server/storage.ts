@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { quests, dailyQuests, userSettings, achievements, userStats, users, ACHIEVEMENT_TYPES } from "@db/schema";
-import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import type { Quest, DailyQuest, StatsResponse, UserSettings, Achievement } from "@db/schema";
 
 // Helper to get "today's date" relative to user's refresh time
@@ -52,15 +52,12 @@ export const storage = {
 
   async bulkDeleteQuests(questIds: number[], userId: string): Promise<number> {
     const result = await db.delete(quests).where(
-      and(
-        inArray(quests.id, questIds), 
-        eq(quests.userId, userId)
-      )
+      and(sql`${quests.id} = ANY(${questIds})`, eq(quests.userId, userId))
     ).returning();
     return result.length;
-  }, // Fixed comma/brace
+  },
 
-   async archiveQuest(questId: number, userId: string): Promise<Quest | null> {
+  async archiveQuest(questId: number, userId: string): Promise<Quest | null> {
     const [quest] = await db.update(quests)
       .set({ archived: true })
       .where(and(eq(quests.id, questId), eq(quests.userId, userId)))
@@ -68,24 +65,10 @@ export const storage = {
     return quest || null;
   },
 
-    async updateQuest(questId: number, userId: string, content: string): Promise<Quest | null> {
-    const [updated] = await db.update(quests)
-      .set({ content })
-      .where(and(eq(quests.id, questId), eq(quests.userId, userId)))
-      .returning();
-    return updated || null;
-  },
-
-
   async bulkArchiveQuests(questIds: number[], userId: string): Promise<number> {
     const result = await db.update(quests)
       .set({ archived: true })
-      .where(
-        and(
-          inArray(quests.id, questIds),
-          eq(quests.userId, userId)
-        )
-      )
+      .where(and(sql`${quests.id} = ANY(${questIds})`, eq(quests.userId, userId)))
       .returning();
     return result.length;
   },
@@ -224,94 +207,168 @@ export const storage = {
       achievements: userAchievements,
     };
   },
-      async recalculateStats(userId: string, currentDate: string): Promise<void> {
-    const allDailyQuests = await db.select()
-      .from(dailyQuests)
-      .where(eq(dailyQuests.userId, userId))
-      .orderBy(desc(dailyQuests.date));
 
-    const totalQuestsCompleted = allDailyQuests.filter(q => q.completed).length;
+  async recalculateStats(userId: string, currentDate: string): Promise<void> {
+  const allDailyQuests = await db.select()
+    .from(dailyQuests)
+    .where(eq(dailyQuests.userId, userId))
+    .orderBy(desc(dailyQuests.date));
 
-    let currentStreak = 0;
-    let longestStreak = 0;
-    let tempStreak = 0;
+  const totalQuestsCompleted = allDailyQuests.filter(q => q.completed).length;
 
-    const dateMap = new Map<string, { completed: number, total: number }>();
-    allDailyQuests.forEach(q => {
-      if (!dateMap.has(q.date)) {
-        dateMap.set(q.date, { completed: 0, total: 0 });
-      }
-      const day = dateMap.get(q.date)!;
-      day.total++;
-      if (q.completed) day.completed++;
-    });
-
-    const sortedDates = Array.from(dateMap.keys()).sort().reverse();
-    const todayData = dateMap.get(currentDate);
-    const hasCompletedToday = todayData && todayData.completed >= 1;
-
-    for (let i = 0; i < sortedDates.length; i++) {
-      const date = sortedDates[i];
-      const dayData = dateMap.get(date)!;
-
-      if (dayData.completed >= 1) {
-        tempStreak++;
-        if (i === 0 || this.isConsecutiveDay(sortedDates[i - 1], date)) {
-          currentStreak = tempStreak;
-        }
-        longestStreak = Math.max(longestStreak, tempStreak);
-      } else {
-        if (date === currentDate && !hasCompletedToday) {
-          currentStreak = 0;
-        }
-        tempStreak = 0;
-      }
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let tempStreak = 0;
+  
+  const dateMap = new Map<string, { completed: number, total: number }>();
+  allDailyQuests.forEach(q => {
+    if (!dateMap.has(q.date)) {
+      dateMap.set(q.date, { completed: 0, total: 0 });
     }
+    const day = dateMap.get(q.date)!;
+    day.total++;
+    if (q.completed) day.completed++;
+  });
 
-    await db.update(userStats)
-      .set({ 
-        currentStreak, 
-        longestStreak, 
-        totalQuestsCompleted,
-        lastActiveDate: hasCompletedToday ? currentDate : null 
-      })
-      .where(eq(userStats.userId, userId));
-  },
+  const sortedDates = Array.from(dateMap.keys()).sort().reverse();
+  
+  // Check if today has any completed quests
+  const todayData = dateMap.get(currentDate);
+  const hasCompletedToday = todayData && todayData.completed >= 1;
+  
+  for (let i = 0; i < sortedDates.length; i++) {
+    const date = sortedDates[i];
+    const dayData = dateMap.get(date)!;
 
-    async checkAndUnlockAchievements(userId: string): Promise<void> {
-    const [stats] = await db.select().from(userStats).where(eq(userStats.userId, userId));
-    if (!stats) return;
-
-    const existing = await db.select().from(achievements).where(eq(achievements.userId, userId));
-    const existingTypes = new Set(existing.map(a => a.achievementType));
-
-    if (stats.totalQuestsCompleted >= 1 && !existingTypes.has('FIRST_QUEST')) {
-      // Force the insert using raw SQL keys to bypass Drizzle's mapping
-      await db.execute(sql`
-        INSERT INTO "achievements" ("user_id", "achievement_type", "unlocked_at")
-        VALUES (${userId}, 'FIRST_QUEST', NOW())
-      `);
+    if (dayData.completed >= 1) {
+      tempStreak++;
+      if (i === 0 || this.isConsecutiveDay(sortedDates[i - 1], date)) {
+        currentStreak = tempStreak;
+      }
+      longestStreak = Math.max(longestStreak, tempStreak);
+    } else {
+      // If it's today and no quests completed, reset current streak
+      if (date === currentDate && !hasCompletedToday) {
+        currentStreak = 0;
+      }
+      tempStreak = 0;
     }
-  },
+  }
 
+  const totalDaysActive = Array.from(dateMap.values()).filter(d => d.completed >= 1).length;
+
+  await db.update(userStats)
+    .set({
+      currentStreak: hasCompletedToday ? currentStreak : 0,
+      longestStreak,
+      totalQuestsCompleted,
+      totalDaysActive,
+      lastActiveDate: sortedDates[0] || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(userStats.userId, userId));
+  },
 
   isConsecutiveDay(date1: string, date2: string): boolean {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
-    const diff = Math.abs(d1.getTime() - d2.getTime());
-    return diff <= 86400000;
+    const diffTime = Math.abs(d2.getTime() - d1.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays === 1;
   },
 
-  async getSettings(userId: string): Promise<UserSettings | null> {
-    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
-    return settings || null;
+  // === ACHIEVEMENTS ===
+  async checkAndUnlockAchievements(userId: string): Promise<Achievement[]> {
+    const newAchievements: Achievement[] = [];
+
+    // Get current stats
+    const [stats] = await db.select().from(userStats).where(eq(userStats.userId, userId));
+    if (!stats) return [];
+
+    // Get existing achievements
+    const existing = await db.select().from(achievements).where(eq(achievements.userId, userId));
+    const existingTypes = new Set(existing.map(a => a.achievementType));
+
+    // Check for first quest
+    if (!existingTypes.has(ACHIEVEMENT_TYPES.FIRST_QUEST) && stats.totalQuestsCompleted >= 1) {
+      const [achievement] = await db.insert(achievements).values({
+        userId,
+        achievementType: ACHIEVEMENT_TYPES.FIRST_QUEST,
+      }).returning();
+      newAchievements.push(achievement);
+    }
+
+    // Check for first perfect day (all 3 quests completed in one day)
+    if (!existingTypes.has(ACHIEVEMENT_TYPES.FIRST_PERFECT_DAY)) {
+      const perfectDays = await db.select({ date: dailyQuests.date })
+        .from(dailyQuests)
+        .where(and(eq(dailyQuests.userId, userId), eq(dailyQuests.completed, true)))
+        .groupBy(dailyQuests.date)
+        .having(sql`COUNT(*) >= 3`);
+
+      if (perfectDays.length > 0) {
+        const [achievement] = await db.insert(achievements).values({
+          userId,
+          achievementType: ACHIEVEMENT_TYPES.FIRST_PERFECT_DAY,
+        }).returning();
+        newAchievements.push(achievement);
+      }
+    }
+
+    // Check streak achievements
+    const streakAchievements = [
+      { type: ACHIEVEMENT_TYPES.STREAK_7, threshold: 7 },
+      { type: ACHIEVEMENT_TYPES.STREAK_30, threshold: 30 },
+      { type: ACHIEVEMENT_TYPES.STREAK_100, threshold: 100 },
+      { type: ACHIEVEMENT_TYPES.STREAK_200, threshold: 200 },
+      { type: ACHIEVEMENT_TYPES.STREAK_300, threshold: 300 },
+      { type: ACHIEVEMENT_TYPES.STREAK_365, threshold: 365 },
+      { type: ACHIEVEMENT_TYPES.STREAK_500, threshold: 500 },
+    ];
+
+    for (const { type, threshold } of streakAchievements) {
+      if (!existingTypes.has(type) && stats.currentStreak >= threshold) {
+        const [achievement] = await db.insert(achievements).values({
+          userId,
+          achievementType: type,
+        }).returning();
+        newAchievements.push(achievement);
+      }
+    }
+
+    return newAchievements;
+  },
+
+  // === SETTINGS ===
+  async getSettings(userId: string): Promise<UserSettings> {
+    let [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    
+    if (!settings) {
+      [settings] = await db.insert(userSettings).values({
+        userId,
+        refreshTime: "04:00",
+        notificationEnabled: true,
+        notificationTime: "08:00",
+        notificationText: "Time to conquer your daily quests!",
+        theme: "light",
+        onboardingCompleted: false,
+      }).returning();
+    }
+
+    return settings;
   },
 
   async updateSettings(userId: string, updates: Partial<UserSettings>): Promise<UserSettings> {
     const [settings] = await db.update(userSettings)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(userSettings.userId, userId))
       .returning();
     return settings;
-  }
+  },
+
+  async completeOnboarding(userId: string): Promise<void> {
+    await db.update(userSettings)
+      .set({ onboardingCompleted: true, updatedAt: new Date() })
+      .where(eq(userSettings.userId, userId));
+  },
 };

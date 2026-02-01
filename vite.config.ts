@@ -12,17 +12,12 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: 'dist/public',
     emptyOutDir: true,
   },
-    server: {
-    hmr: true, // Force Hot Module Replacement
+  server: {
     proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-      },
+      '/api': 'http://localhost:5000',
     },
   },
-
 });

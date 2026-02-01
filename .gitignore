@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
-.pnpm-store/
 .neon_local/
+.pnpm-store/
 
 # Build output
 dist/
@@ -29,7 +29,3 @@ Thumbs.db
 
 # Drizzle
 drizzle/
-
-# Database
-*.db
-*.sqlite
