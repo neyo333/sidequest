@@ -45,7 +45,7 @@ registerRoutes(app);
 
 // Serve static files in production
 if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(__dirname, "../dist/public");
+  const distPath = path.join(process.cwd(), "dist");
   app.use(express.static(distPath));
 
   // SPA fallback
