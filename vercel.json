@@ -1,7 +1,15 @@
 {
   "version": 2,
+  "public": true,
+  "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/dist/public/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/dist/public/index.html"
+    }
   ]
 }
