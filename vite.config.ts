@@ -17,6 +17,13 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    // 👇 PASTE THE NEW CONFIGURATION HERE 👇
+    host: '0.0.0.0',
+    allowedHosts: [
+      'sidequest-production.up.railway.app',
+      'sidequest.com' // You can add your custom domain here too
+    ],
+    // 👆 END OF NEW CONFIGURATION 👆
     proxy: {
       '/api': 'http://localhost:5000',
     },
