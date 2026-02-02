@@ -24,7 +24,7 @@ async function buildApp() {
     
     // Build server
     execSync(
-      `esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:pg-native --external:better-sqlite3`,
+      `esbuild server/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:pg-native --external:better-sqlite3 --external:lightningcss`,
       { stdio: "inherit" }
     );
 
