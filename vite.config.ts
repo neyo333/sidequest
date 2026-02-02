@@ -21,6 +21,7 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: [
       'sidequest-production.up.railway.app',
+      'sidequest-uuhn.onrender.com',
       'sidequest.com' // You can add your custom domain here too
     ],
     // 👆 END OF NEW CONFIGURATION 👆
